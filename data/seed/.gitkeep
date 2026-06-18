@@ -1,0 +1,3 @@
+# Place seed corpus here: ~20 court opinions (PDF) + ~10 patents (XML).
+# See spec §0.3 for public sources (CourtListener, Caselaw Access Project, USPTO Bulk Data).
+# Keep total < 50 MB. At least one patent should be cited by at least one case.
