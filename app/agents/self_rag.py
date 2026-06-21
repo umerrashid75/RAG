@@ -15,15 +15,15 @@ log = logging.getLogger(__name__)
 
 class ReflectionGrades(BaseModel):
     is_relevant: bool = Field(description="Retrieved context is relevant to the query.")
-    is_faithful: bool = Field(description="Draft is grounded in the retrieved context (no hallucination).")
+    is_faithful: bool = Field(description="Draft is grounded in the context (no hallucination).")
     is_useful: bool = Field(description="Draft usefully answers the user's query.")
     retrieve_again: bool = Field(description="True if another retrieval pass is needed.")
     reason: str = Field(description="Brief explanation of grades.")
 
 
 _REFLECTION_PROMPT = """\
-You are a Self-RAG evaluator for a legal intelligence system.
-Assess the draft answer against the retrieved context and user query.
+You are a Self-RAG evaluator for an AI-research question-answering system.
+Assess the draft answer against the retrieved context and user question.
 
 User Query: {query}
 

@@ -12,9 +12,11 @@ log = logging.getLogger(__name__)
 
 # Constraints to be created on startup (idempotent IF NOT EXISTS).
 _CONSTRAINTS = [
-    "CREATE CONSTRAINT IF NOT EXISTS FOR (c:Case) REQUIRE c.citation IS UNIQUE",
-    "CREATE CONSTRAINT IF NOT EXISTS FOR (p:Patent) REQUIRE p.patent_number IS UNIQUE",
-    "CREATE CONSTRAINT IF NOT EXISTS FOR (s:Statute) REQUIRE s.section_number IS UNIQUE",
+    "CREATE CONSTRAINT IF NOT EXISTS FOR (p:Paper) REQUIRE p.name IS UNIQUE",
+    "CREATE CONSTRAINT IF NOT EXISTS FOR (a:Author) REQUIRE a.name IS UNIQUE",
+    "CREATE CONSTRAINT IF NOT EXISTS FOR (m:Method) REQUIRE m.name IS UNIQUE",
+    "CREATE CONSTRAINT IF NOT EXISTS FOR (d:Dataset) REQUIRE d.name IS UNIQUE",
+    "CREATE CONSTRAINT IF NOT EXISTS FOR (b:Benchmark) REQUIRE b.name IS UNIQUE",
 ]
 
 

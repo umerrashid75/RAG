@@ -41,16 +41,11 @@ def run_eval() -> None:
         sys.exit(1)
 
     from app.config import get_settings
-    from app.indexing.embeddings import OpenAIEmbeddings
-    from app.indexing.vector_store import QdrantHybridStore
-    from app.llm.providers import GeminiProvider
-    from app.retrieval.hybrid import HybridRetriever
+    from app.factory import build_llm, build_retriever
 
     cfg = get_settings()
-    store = QdrantHybridStore(cfg.qdrant_url, cfg.qdrant_collection, cfg.embedding_dimensions)
-    embeddings = OpenAIEmbeddings(cfg.embedding_model, cfg.embedding_dimensions)
-    retriever = HybridRetriever(store, embeddings, rrf_k=cfg.rrf_k)
-    llm = GeminiProvider(cfg.google_api_key, cfg.generation_model)
+    retriever = build_retriever(cfg)
+    llm = build_llm(cfg)
 
     golden = load_golden_set()
     rows = {"question": [], "answer": [], "contexts": [], "ground_truth": []}
@@ -62,9 +57,9 @@ def run_eval() -> None:
         context_combined = "\n---\n".join(context_texts)
 
         prompt = (
-            "Answer the following legal query using ONLY the context below. "
-            "Cite each claim by document_id.\n\n"
-            f"Query: {query}\n\nContext:\n{context_combined}\n\nAnswer:"
+            "Answer the following research question using ONLY the context below. "
+            "Cite each claim by its source id.\n\n"
+            f"Question: {query}\n\nContext:\n{context_combined}\n\nAnswer:"
         )
         answer = str(llm.generate(prompt))
 

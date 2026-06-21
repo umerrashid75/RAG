@@ -1,48 +1,48 @@
 """
-Parametrized Cypher query builders (§6.1).
-NEVER use f-string interpolation for Cypher — use parameters to prevent injection.
+Parametrized Cypher query builders for the research-paper knowledge graph.
+NEVER use f-string interpolation for values — use parameters to prevent injection.
 """
 from __future__ import annotations
 
 
-def find_patent_with_claims(patent_number: str) -> tuple[str, dict]:
-    """Return (cypher, params) to fetch a patent and its claims."""
+def find_paper_with_methods(paper_name: str) -> tuple[str, dict]:
+    """Return (cypher, params) to fetch a paper and the methods it proposes."""
     cypher = (
-        "MATCH (p:Patent {patent_number: $patent_number})-[:CONTAINS]->(c:Claim) "
-        "RETURN p, collect(c) AS claims"
+        "MATCH (p:Paper {name: $paper_name})-[:PROPOSES]->(m:Method) "
+        "RETURN p, collect(m) AS methods"
     )
-    return cypher, {"patent_number": patent_number}
+    return cypher, {"paper_name": paper_name}
 
 
-def find_citing_cases(patent_number: str, hops: int = 1) -> tuple[str, dict]:
-    """Return (cypher, params) for cases citing a patent (1 or 2 hops)."""
+def find_citing_papers(paper_name: str, hops: int = 1) -> tuple[str, dict]:
+    """Return (cypher, params) for papers that cite a given paper (1 or 2 hops)."""
     if hops == 1:
         cypher = (
-            "MATCH (case:Case)-[:ADJUDICATES]->(p:Patent {patent_number: $patent_number}) "
-            "RETURN case"
+            "MATCH (citing:Paper)-[:CITES]->(p:Paper {name: $paper_name}) "
+            "RETURN citing"
         )
     else:
         cypher = (
-            "MATCH (case:Case)-[:ADJUDICATES]->(p:Patent {patent_number: $patent_number}) "
-            "OPTIONAL MATCH (case2:Case)-[:CITES]->(case) "
-            "RETURN case, collect(case2) AS citing_cases"
+            "MATCH (citing:Paper)-[:CITES]->(p:Paper {name: $paper_name}) "
+            "OPTIONAL MATCH (downstream:Paper)-[:CITES]->(citing) "
+            "RETURN citing, collect(downstream) AS downstream_papers"
         )
-    return cypher, {"patent_number": patent_number}
+    return cypher, {"paper_name": paper_name}
 
 
-def find_cases_by_judge(judge_name: str) -> tuple[str, dict]:
-    """Return (cypher, params) for cases decided by a named judge."""
+def find_papers_by_author(author_name: str) -> tuple[str, dict]:
+    """Return (cypher, params) for papers written by a named author."""
     cypher = (
-        "MATCH (case:Case)-[:DECIDED_BY]->(j:Judge {name: $judge_name}) "
-        "RETURN case ORDER BY case.date DESC"
+        "MATCH (p:Paper)-[:AUTHORED_BY]->(a:Author {name: $author_name}) "
+        "RETURN p ORDER BY p.published DESC"
     )
-    return cypher, {"judge_name": judge_name}
+    return cypher, {"author_name": author_name}
 
 
-def find_statute_cases(section_number: str) -> tuple[str, dict]:
-    """Return (cypher, params) for cases interpreting a statute section."""
+def find_papers_using_dataset(dataset_name: str) -> tuple[str, dict]:
+    """Return (cypher, params) for papers that evaluate on a given dataset/benchmark."""
     cypher = (
-        "MATCH (case:Case)-[:INTERPRETS]->(s:Statute {section_number: $section_number}) "
-        "RETURN case ORDER BY case.date DESC"
+        "MATCH (p:Paper)-[:EVALUATES_ON]->(d {name: $dataset_name}) "
+        "RETURN p ORDER BY p.published DESC"
     )
-    return cypher, {"section_number": section_number}
+    return cypher, {"dataset_name": dataset_name}

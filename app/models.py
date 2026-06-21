@@ -8,10 +8,12 @@ from typing import Any, Literal, Protocol, TypedDict, runtime_checkable
 
 from pydantic import BaseModel, Field
 
-
 # ---------------------------------------------------------------------------
 # Core domain models
 # ---------------------------------------------------------------------------
+
+
+DocumentType = Literal["Paper", "Survey", "Benchmark"]
 
 
 class Chunk(BaseModel):
@@ -20,10 +22,10 @@ class Chunk(BaseModel):
     chunk_id: str
     parent_id: str | None = None  # None for parent-level chunks
     document_id: str
-    document_type: Literal["Case", "Patent", "Statute"]
+    document_type: DocumentType
     content: str
     metadata: dict[str, Any] = Field(default_factory=dict)
-    # citation, section, date, jurisdiction, page, etc. live in metadata
+    # arxiv_id, title, authors, published, categories, section, page, etc. live in metadata
 
 
 class RetrievedDoc(BaseModel):
@@ -89,9 +91,14 @@ class AgentState(TypedDict):
 # ---------------------------------------------------------------------------
 
 
+EntityType = Literal[
+    "Paper", "Author", "Method", "Dataset", "Benchmark", "Task", "Concept", "Institution"
+]
+
+
 class Entity(BaseModel):
     name: str
-    type: Literal["Case", "Judge", "Patent", "Claim", "Statute", "LegalConcept", "Party"]
+    type: EntityType
     attributes: dict[str, Any] = Field(default_factory=dict)
 
 

@@ -13,8 +13,8 @@ from pydantic import BaseModel, Field
 log = logging.getLogger(__name__)
 
 app = FastAPI(
-    title="LexGraph-RAG",
-    description="Advanced Legal Case Law & Patent Intelligence System",
+    title="PaperGraph-RAG",
+    description="Agentic GraphRAG for understanding the latest AI research papers",
     version="0.1.0",
 )
 
@@ -34,14 +34,8 @@ def _get_settings():
 
 def _get_vector_store():
     if "vector_store" not in _stores:
-        from app.indexing.vector_store import QdrantHybridStore
-        cfg = _get_settings()
-        store = QdrantHybridStore(
-            url=cfg.qdrant_url,
-            collection=cfg.qdrant_collection,
-            dimensions=cfg.embedding_dimensions,
-        )
-        _stores["vector_store"] = store
+        from app.factory import build_vector_store
+        _stores["vector_store"] = build_vector_store(_get_settings())
     return _stores["vector_store"]
 
 
@@ -95,10 +89,18 @@ def healthz() -> dict[str, Any]:
 
 
 class IngestRequest(BaseModel):
-    path: str = Field(description="Absolute path to a file or directory to ingest.")
+    path: str | None = Field(
+        default=None,
+        description="Path to a local file or directory of papers (.pdf/.txt/.md).",
+    )
+    arxiv: str | None = Field(
+        default=None,
+        description="arXiv id(s) or a search query to fetch and ingest directly.",
+    )
+    max_results: int = Field(default=5, ge=1, le=50, description="Max papers for an arXiv search.")
     document_type: str | None = Field(
         default=None,
-        description="Override document type: Case, Patent, or Statute.",
+        description="Override document type: Paper, Survey, or Benchmark.",
     )
 
 
@@ -109,8 +111,9 @@ class IngestResponse(BaseModel):
 
 @app.post("/ingest", response_model=IngestResponse, tags=["ingestion"])
 def ingest(req: IngestRequest) -> IngestResponse:
-    """Parse documents and upsert chunks into Qdrant."""
-    from app.indexing.embeddings import OpenAIEmbeddings
+    """Fetch/parse research papers and upsert their chunks into Qdrant."""
+    from app.factory import build_embeddings
+    from app.ingestion.arxiv_loader import fetch_arxiv
     from app.ingestion.loaders import load_directory
     from app.ingestion.parser import parse_document
 
@@ -118,20 +121,21 @@ def ingest(req: IngestRequest) -> IngestResponse:
     store = _get_vector_store()
     store.ensure_collection()
 
-    embeddings = OpenAIEmbeddings(
-        model=cfg.embedding_model,
-        dimensions=cfg.embedding_dimensions,
-    )
+    embeddings = build_embeddings(cfg)
 
-    target = Path(req.path)
     chunks = []
-    if target.is_dir():
-        chunks = list(load_directory(target, document_type=req.document_type))
-    elif target.is_file():
-        dtype = req.document_type or ("Patent" if target.suffix == ".xml" else "Case")
-        chunks = parse_document(target, dtype)
+    if req.arxiv:
+        chunks = list(fetch_arxiv(req.arxiv, max_results=req.max_results))
+    elif req.path:
+        target = Path(req.path)
+        if target.is_dir():
+            chunks = list(load_directory(target, document_type=req.document_type))
+        elif target.is_file():
+            chunks = parse_document(target, req.document_type or "Paper")
+        else:
+            raise HTTPException(status_code=404, detail=f"Path not found: {req.path}")
     else:
-        raise HTTPException(status_code=404, detail=f"Path not found: {req.path}")
+        raise HTTPException(status_code=400, detail="Provide either 'arxiv' or 'path'.")
 
     if not chunks:
         return IngestResponse(ingested_chunks=0, document_ids=[])
@@ -139,6 +143,15 @@ def ingest(req: IngestRequest) -> IngestResponse:
     texts = [c.content for c in chunks]
     vectors = embeddings.embed(texts)
     store.upsert(chunks, vectors)
+
+    if cfg.enable_graph:
+        from app.factory import build_graph_store, build_llm
+        from app.graph.enrich import enrich_graph
+
+        try:
+            enrich_graph(chunks, build_llm(cfg), build_graph_store(cfg))
+        except Exception:
+            log.exception("Graph enrichment failed; vector index is still populated.")
 
     doc_ids = list({c.document_id for c in chunks})
     return IngestResponse(ingested_chunks=len(chunks), document_ids=doc_ids)
@@ -150,7 +163,7 @@ def ingest(req: IngestRequest) -> IngestResponse:
 
 
 class QueryRequest(BaseModel):
-    query: str = Field(min_length=1, description="Legal question to answer.")
+    query: str = Field(min_length=1, description="Research question to answer.")
     top_k: int = Field(default=15, ge=1, le=100)
 
 
@@ -159,6 +172,7 @@ class Citation(BaseModel):
     document_type: str
     score: float
     source: str
+    title: str | None = None
 
 
 class QueryResponse(BaseModel):
@@ -166,52 +180,53 @@ class QueryResponse(BaseModel):
     citations: list[Citation]
     crag_confidence: float | None = None
     iterations: int | None = None
+    reflections: dict[str, Any] | None = None
 
 
 @app.post("/query", response_model=QueryResponse, tags=["query"])
 def query(req: QueryRequest) -> QueryResponse:
-    """Answer a legal query using hybrid retrieval and generation."""
-    from app.indexing.embeddings import OpenAIEmbeddings
-    from app.indexing.vector_store import QdrantHybridStore
-    from app.llm.providers import GeminiProvider
-    from app.retrieval.hybrid import HybridRetriever
+    """
+    Answer a research question via the agentic loop: route → hybrid retrieve →
+    CRAG grade → generate → Self-RAG reflect → (loop or finalize).
+    """
+    from app.factory import build_agentic_graph, build_retriever
 
     cfg = _get_settings()
-    store = _get_vector_store()
+    retriever = build_retriever(cfg, store=_get_vector_store())
+    graph = build_agentic_graph(cfg, retriever=retriever)
 
-    embeddings = OpenAIEmbeddings(
-        model=cfg.embedding_model,
-        dimensions=cfg.embedding_dimensions,
-    )
-    retriever = HybridRetriever(store, embeddings, rrf_k=cfg.rrf_k)
-    llm = GeminiProvider(
-        api_key=cfg.google_api_key,
-        model=cfg.generation_model,
-        temperature=cfg.generation_temperature,
-        max_tokens=cfg.generation_max_tokens,
-    )
+    initial_state: dict[str, Any] = {
+        "query": req.query,
+        "retrieved": [],
+        "crag_confidence": 0.0,
+        "draft": "",
+        "reflections": {},
+        "iterations": 0,
+        "answer": None,
+    }
 
-    docs = retriever.retrieve(req.query, top_k=req.top_k)
+    try:
+        final_state = graph.invoke(initial_state)
+    except Exception as exc:  # surface provider/config errors as a clean 502
+        log.exception("Agentic query failed")
+        raise HTTPException(status_code=502, detail=f"Query failed: {exc}") from exc
 
-    context = "\n---\n".join(
-        f"[{d.chunk.document_type} | {d.chunk.document_id}]\n{d.chunk.content}"
-        for d in docs
-    )
-    prompt = (
-        "You are a legal intelligence assistant. Answer the following query using ONLY "
-        "the provided context. Cite every factual claim with the document_id.\n\n"
-        f"Query: {req.query}\n\nContext:\n{context}\n\nAnswer (with citations):"
-    )
-    answer = str(llm.generate(prompt))
-
+    docs = final_state.get("retrieved", [])
     citations = [
         Citation(
             document_id=d.chunk.document_id,
             document_type=d.chunk.document_type,
             score=round(d.score, 4),
             source=d.source,
+            title=d.chunk.metadata.get("title"),
         )
         for d in docs[:10]
     ]
 
-    return QueryResponse(answer=answer, citations=citations)
+    return QueryResponse(
+        answer=final_state.get("answer") or final_state.get("draft") or "",
+        citations=citations,
+        crag_confidence=final_state.get("crag_confidence"),
+        iterations=final_state.get("iterations"),
+        reflections=final_state.get("reflections") or None,
+    )

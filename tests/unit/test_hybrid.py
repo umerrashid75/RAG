@@ -14,7 +14,7 @@ def _make_doc(chunk_id: str, source: str = "dense", score: float = 1.0) -> Retri
         chunk_id=chunk_id,
         parent_id=None,
         document_id=f"doc_{chunk_id}",
-        document_type="Case",
+        document_type="Paper",
         content=f"Content of {chunk_id}",
         metadata={},
     )

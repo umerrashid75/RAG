@@ -6,7 +6,7 @@ from __future__ import annotations
 
 
 def hyde_transform(query: str, llm) -> str:
-    """P5: Generate a hypothetical ideal legal opinion to use as the query vector."""
+    """Deferred: generate a hypothetical ideal answer passage to use as the query vector."""
     raise NotImplementedError("HyDE query transform is implemented in Phase P5.")
 
 

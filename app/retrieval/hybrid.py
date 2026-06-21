@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 
-from app.models import EmbeddingProvider, RetrievedDoc, Retriever
+from app.models import EmbeddingProvider, RetrievedDoc
 
 log = logging.getLogger(__name__)
 

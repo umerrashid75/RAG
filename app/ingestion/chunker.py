@@ -8,12 +8,10 @@ child embeddings for precision; generation context uses the parent.
 from __future__ import annotations
 
 import hashlib
-import uuid
 
 import tiktoken
 
 from app.models import Chunk
-
 
 _ENCODING = tiktoken.get_encoding("cl100k_base")
 
@@ -51,7 +49,8 @@ def _split_by_tokens(
 
 
 def _make_id(document_id: str, suffix: str) -> str:
-    return hashlib.sha1(f"{document_id}:{suffix}".encode()).hexdigest()[:16]
+    # Non-cryptographic — just a stable, collision-resistant chunk id.
+    return hashlib.sha1(f"{document_id}:{suffix}".encode(), usedforsecurity=False).hexdigest()[:16]
 
 
 def build_chunks(
@@ -100,7 +99,12 @@ def build_chunks(
                 document_id=document_id,
                 document_type=document_type,
                 content=c_text,
-                metadata={**metadata, "chunk_index": c_idx, "parent_index": p_idx, "level": "child"},
+                metadata={
+                    **metadata,
+                    "chunk_index": c_idx,
+                    "parent_index": p_idx,
+                    "level": "child",
+                },
             )
             chunks.append(child)
 

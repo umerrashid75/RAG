@@ -1,19 +1,16 @@
 """
-Data source loaders for CourtListener / USPTO bulk data (§0.3).
-P0/P1: file-based loading only; API-based streaming is a future concern.
+File-based data source loaders for local research-paper corpora.
+For fetching directly from arXiv, see app/ingestion/arxiv_loader.py.
 """
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 
-from app.ingestion.parser import DocumentType, parse_document
-from app.models import Chunk
+from app.ingestion.parser import parse_document
+from app.models import Chunk, DocumentType
 
-_EXTENSION_TO_TYPE: dict[str, DocumentType] = {
-    ".pdf": "Case",
-    ".xml": "Patent",
-}
+_SUPPORTED_EXTENSIONS = {".pdf", ".txt", ".md"}
 
 
 def load_directory(
@@ -25,9 +22,8 @@ def load_directory(
     overlap: int = 25,
 ) -> Iterator[Chunk]:
     """
-    Walk *directory* and yield Chunks for every supported file.
-    If *document_type* is None, it is inferred from the file extension
-    (.pdf → Case, .xml → Patent).
+    Walk *directory* and yield Chunks for every supported file (.pdf, .txt, .md).
+    Files are treated as 'Paper' unless *document_type* overrides it.
     """
     directory = Path(directory)
     if not directory.is_dir():
@@ -36,10 +32,9 @@ def load_directory(
     for path in sorted(directory.rglob("*")):
         if not path.is_file():
             continue
-        inferred_type = _EXTENSION_TO_TYPE.get(path.suffix.lower())
-        if inferred_type is None:
+        if path.suffix.lower() not in _SUPPORTED_EXTENSIONS:
             continue
-        dtype = document_type or inferred_type
+        dtype = document_type or "Paper"
         try:
             chunks = parse_document(
                 path,

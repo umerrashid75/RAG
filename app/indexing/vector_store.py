@@ -49,22 +49,17 @@ class QdrantHybridStore:
         self,
         url: str,
         collection: str,
-        dimensions: int = 3072,
+        dimensions: int = 384,
         dense_name: str = "dense",
         sparse_name: str = "sparse",
+        api_key: str | None = None,
     ) -> None:
         try:
             from qdrant_client import QdrantClient  # type: ignore[import-untyped]
-            from qdrant_client.models import (  # type: ignore[import-untyped]
-                Distance,
-                SparseIndexParams,
-                SparseVectorParams,
-                VectorParams,
-            )
         except ImportError as exc:
             raise ImportError("qdrant-client is required for QdrantHybridStore") from exc
 
-        self._client = QdrantClient(url=url)
+        self._client = QdrantClient(url=url, api_key=api_key or None)
         self._collection = collection
         self._dimensions = dimensions
         self._dense_name = dense_name
@@ -112,7 +107,7 @@ class QdrantHybridStore:
             raise ValueError("chunks and dense_vectors must have the same length")
 
         points = []
-        for chunk, dvec in zip(chunks, dense_vectors):
+        for chunk, dvec in zip(chunks, dense_vectors, strict=True):
             points.append(
                 PointStruct(
                     id=str(uuid.uuid5(uuid.NAMESPACE_DNS, chunk.chunk_id)),

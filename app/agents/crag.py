@@ -5,11 +5,9 @@ Phase P3.
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from pydantic import BaseModel
 
-from app.agents.state import AgentState
 from app.models import LLMProvider, RetrievedDoc
 
 log = logging.getLogger(__name__)
@@ -21,8 +19,8 @@ class RelevanceGrade(BaseModel):
 
 
 _GRADE_PROMPT = """\
-You are a legal relevance grader. Given a user query and a retrieved document chunk,
-score the chunk's relevance to answering the query.
+You are a research relevance grader. Given a user question and a retrieved chunk from
+a research paper, score the chunk's relevance to answering the question.
 
 Query: {query}
 
@@ -85,7 +83,7 @@ def web_fallback(query: str, tavily_api_key: str, max_results: int = 5) -> list[
             chunk_id=f"web_{i}",
             parent_id=None,
             document_id=r.get("url", f"web_{i}"),
-            document_type="Case",  # best-effort default; web results are often case summaries
+            document_type="Paper",  # best-effort default for web-sourced material
             content=r.get("content", ""),
             metadata={"url": r.get("url", ""), "title": r.get("title", "")},
         )

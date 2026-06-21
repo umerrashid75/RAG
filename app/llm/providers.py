@@ -1,10 +1,9 @@
 """
-LLMProvider implementations: Gemini (primary) and OpenAI (fallback/eval).
-Both satisfy the LLMProvider Protocol from app.models.
+LLMProvider implementations: Groq (default, free-tier), Gemini, and OpenAI.
+All satisfy the LLMProvider Protocol from app.models.
 """
 from __future__ import annotations
 
-import json
 import logging
 from typing import Any
 
@@ -60,7 +59,12 @@ class GeminiProvider:
 
 
 class OpenAIProvider:
-    """OpenAI GPT-4o provider (fallback / eval)."""
+    """
+    OpenAI-compatible chat provider.
+
+    Works with the OpenAI API and any OpenAI-compatible endpoint (Groq, etc.)
+    via the optional *base_url* argument.
+    """
 
     def __init__(
         self,
@@ -68,13 +72,14 @@ class OpenAIProvider:
         model: str = "gpt-4o",
         temperature: float = 0.1,
         max_tokens: int = 4096,
+        base_url: str | None = None,
     ) -> None:
         try:
             import openai  # type: ignore[import-untyped]
         except ImportError as exc:
             raise ImportError("openai is required for OpenAIProvider") from exc
 
-        self._client = openai.OpenAI(api_key=api_key)
+        self._client = openai.OpenAI(api_key=api_key, base_url=base_url)
         self._model = model
         self._temperature = temperature
         self._max_tokens = max_tokens
@@ -105,6 +110,33 @@ class OpenAIProvider:
             return schema.model_validate_json(raw)
         except Exception as exc:
             raise ValueError(f"LLM output did not match schema {schema.__name__}: {exc}") from exc
+
+
+class GroqProvider(OpenAIProvider):
+    """
+    Groq provider — free-tier, OpenAI-compatible API (https://console.groq.com).
+
+    Default model is a Llama 3.3 instruct model that supports JSON mode, which the
+    CRAG/Self-RAG graders rely on. Override the model with GENERATION_MODEL if Groq
+    rotates its catalogue.
+    """
+
+    _BASE_URL = "https://api.groq.com/openai/v1"
+
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "llama-3.3-70b-versatile",
+        temperature: float = 0.1,
+        max_tokens: int = 4096,
+    ) -> None:
+        super().__init__(
+            api_key=api_key,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            base_url=self._BASE_URL,
+        )
 
 
 class MockLLMProvider:

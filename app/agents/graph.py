@@ -4,7 +4,6 @@ LangGraph state machine wiring the CRAG + Self-RAG agentic loop (§8, P3).
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from app.agents.crag import grade_documents, web_fallback
 from app.agents.router import route_query
@@ -15,11 +14,12 @@ from app.models import LLMProvider, Retriever
 log = logging.getLogger(__name__)
 
 _GENERATION_PROMPT = """\
-You are a legal intelligence assistant. Answer the following query using ONLY the
-provided context. Cite every factual claim with a source (document_id and section).
-If the context is insufficient, state that explicitly.
+You are an AI research assistant. Answer the following question using ONLY the
+provided context drawn from research papers. Cite every factual claim with its
+source (the document_id / arXiv id). Be precise about methods, datasets, and
+reported results. If the context is insufficient, state that explicitly.
 
-Query: {query}
+Question: {query}
 
 Context:
 {context}
@@ -64,7 +64,11 @@ def build_graph(
         relevant, confidence = grade_documents(state["query"], state["retrieved"], llm)
 
         if confidence < crag_threshold and tavily_api_key:
-            log.info("CRAG confidence %.2f < %.2f — triggering web fallback.", confidence, crag_threshold)
+            log.info(
+                "CRAG confidence %.2f < %.2f — triggering web fallback.",
+                confidence,
+                crag_threshold,
+            )
             web_docs = web_fallback(state["query"], tavily_api_key)
             relevant = relevant + web_docs
             confidence = max(confidence, 0.5)

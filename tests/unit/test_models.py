@@ -8,7 +8,6 @@ from app.models import (
     EmbeddingProvider,
     ExtractionResult,
     LLMProvider,
-    RetrievedDoc,
 )
 
 
@@ -18,8 +17,8 @@ class TestChunk:
         chunk = Chunk(
             chunk_id="p1",
             parent_id=None,
-            document_id="doc1",
-            document_type="Case",
+            document_id="2310.06825",
+            document_type="Paper",
             content="Test content",
         )
         assert chunk.parent_id is None
@@ -28,9 +27,9 @@ class TestChunk:
         chunk = Chunk(
             chunk_id="c1",
             parent_id="p1",
-            document_id="doc1",
-            document_type="Patent",
-            content="Claim 1 content",
+            document_id="2310.06825",
+            document_type="Survey",
+            content="Section content",
         )
         assert chunk.parent_id == "p1"
 
@@ -50,7 +49,7 @@ class TestChunk:
             chunk_id="c1",
             parent_id=None,
             document_id="doc1",
-            document_type="Statute",
+            document_type="Benchmark",
             content="...",
         )
         assert chunk.metadata == {}
@@ -83,6 +82,7 @@ class TestProtocolCompliance:
 
     def test_mock_llm_returns_model_with_schema(self):
         from pydantic import BaseModel
+
         from app.llm.providers import MockLLMProvider
 
         class MyModel(BaseModel):
@@ -103,6 +103,7 @@ class TestExtractionResult:
 
     def test_entity_type_validation(self):
         from pydantic import ValidationError
+
         from app.models import Entity
         with pytest.raises(ValidationError):
             Entity(name="Test", type="Banana")  # invalid type

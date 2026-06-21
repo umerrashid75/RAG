@@ -1,6 +1,8 @@
 """
 EmbeddingProvider implementations.
-The OpenAIEmbeddings class wraps the OpenAI API; MockEmbeddings is for tests.
+
+FastEmbedEmbeddings is the default: a local ONNX model (no API key, runs offline).
+OpenAIEmbeddings wraps the OpenAI API; MockEmbeddings is for tests.
 """
 from __future__ import annotations
 
@@ -45,6 +47,35 @@ class OpenAIEmbeddings:
             )
             results.extend(item.embedding for item in response.data)
         return results
+
+
+class FastEmbedEmbeddings:
+    """
+    Local embeddings via FastEmbed (ONNX runtime — no API key, no torch, runs offline).
+
+    Default model BAAI/bge-small-en-v1.5 produces 384-dimensional vectors. The model
+    is downloaded and cached on first use, which makes ingestion fully free.
+    """
+
+    def __init__(
+        self,
+        model: str = "BAAI/bge-small-en-v1.5",
+        dimensions: int = 384,
+    ) -> None:
+        try:
+            from fastembed import TextEmbedding  # type: ignore[import-untyped]
+        except ImportError as exc:
+            raise ImportError(
+                "fastembed is required for FastEmbedEmbeddings (pip install fastembed)"
+            ) from exc
+        self._model = TextEmbedding(model_name=model)
+        self._dimensions = dimensions
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        if not texts:
+            return []
+        # TextEmbedding.embed yields numpy arrays; materialize as plain lists.
+        return [vector.tolist() for vector in self._model.embed(texts)]
 
 
 class MockEmbeddings:

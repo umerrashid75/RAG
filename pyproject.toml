@@ -1,24 +1,22 @@
 [project]
-name = "lexgraph-rag"
+name = "papergraph-rag"
 version = "0.1.0"
-description = "Advanced Legal Case Law & Patent Intelligence System"
+description = "Agentic GraphRAG for understanding the latest AI research papers"
 requires-python = ">=3.11"
 dependencies = [
-    # LangChain ecosystem
-    "langchain>=0.3.0",
-    "langchain-openai>=0.2.0",
-    "langchain-google-genai>=2.0.0",
-    "langchain-community>=0.3.0",
+    # Agentic orchestration
     "langgraph>=0.2.0",
+    "langchain-core>=0.3.0",
     # Vector DB
     "qdrant-client>=1.12.0",
-    # Graph DB
+    # Graph DB (optional at runtime — app degrades to vector RAG without it)
     "neo4j>=5.26.0",
-    # LLM providers
+    # LLM providers — Groq (default, free-tier) is OpenAI-compatible via the openai SDK
     "openai>=1.54.0",
-    "google-generativeai>=0.8.0",
-    "cohere>=5.11.0",
-    "tavily-python>=0.5.0",
+    # Local embeddings (ONNX, no API key)
+    "fastembed>=0.4.0",
+    # Data source
+    "arxiv>=2.1.0",
     # Config & validation
     "pydantic>=2.9.0",
     "pydantic-settings>=2.6.0",
@@ -30,16 +28,23 @@ dependencies = [
     "typer>=0.13.0",
     # Document parsing
     "pypdf>=5.1.0",
-    "python-docx>=1.1.0",
-    "lxml>=5.3.0",
     "tiktoken>=0.8.0",
-    # Eval
+]
+
+[project.optional-dependencies]
+# Optional provider upgrades and the evaluation harness.
+extras = [
+    "google-generativeai>=0.8.0",
+    "cohere>=5.11.0",
+    "tavily-python>=0.5.0",
+]
+eval = [
     "ragas>=0.2.0",
     "datasets>=3.1.0",
 ]
 
 [project.scripts]
-lexgraph = "cli.lexgraph:app"
+papergraph = "cli.papergraph:app"
 
 [build-system]
 requires = ["hatchling"]
@@ -67,3 +72,9 @@ line-length = 100
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "S", "B"]
 ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+# Typer uses callables (Argument/Option) as parameter defaults by design.
+"cli/*" = ["B008"]
+# Tests use math-style names and don't need security lints.
+"tests/*" = ["N806", "S105", "S106"]

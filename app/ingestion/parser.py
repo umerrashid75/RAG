@@ -1,19 +1,13 @@
 """
-Hierarchical document parser (§5.1).
-Produces parent/child Chunk objects from PDF (case law) and XML (patents).
+Hierarchical document parser for research papers.
+Produces parent/child Chunk objects from PDF (e.g. arXiv) and plain-text sources.
 """
 from __future__ import annotations
 
-import io
-import re
-import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Literal
 
 from app.ingestion.chunker import build_chunks
-from app.models import Chunk
-
-DocumentType = Literal["Case", "Patent", "Statute"]
+from app.models import Chunk, DocumentType
 
 
 def _extract_pdf_text(path: Path) -> str:
@@ -26,38 +20,9 @@ def _extract_pdf_text(path: Path) -> str:
         raise RuntimeError(f"Failed to parse PDF {path}: {exc}") from exc
 
 
-def _extract_patent_xml_text(path: Path) -> tuple[str, dict]:
-    """Parse USPTO XML and extract abstract + claims as structured text."""
-    try:
-        tree = ET.parse(str(path))
-        root = tree.getroot()
-    except ET.ParseError as exc:
-        raise RuntimeError(f"Failed to parse patent XML {path}: {exc}") from exc
-
-    def _find_text(tag: str) -> str:
-        el = root.find(f".//{tag}")
-        return "".join(el.itertext()).strip() if el is not None else ""
-
-    patent_number = _find_text("publication-reference") or path.stem
-    abstract = _find_text("abstract")
-    description = _find_text("description")
-    claims_raw = [
-        "".join(el.itertext()).strip()
-        for el in root.findall(".//claim")
-    ]
-    claims_text = "\n".join(f"Claim {i+1}: {c}" for i, c in enumerate(claims_raw))
-
-    full_text = "\n\n".join(filter(None, [abstract, description, claims_text]))
-    metadata = {
-        "patent_number": patent_number,
-        "num_claims": len(claims_raw),
-    }
-    return full_text, metadata
-
-
 def parse_document(
     path: Path,
-    document_type: DocumentType,
+    document_type: DocumentType = "Paper",
     *,
     document_id: str | None = None,
     extra_metadata: dict | None = None,
@@ -68,16 +33,16 @@ def parse_document(
     """
     Parse *path* into hierarchical Chunks.
 
-    :param path: File to parse (.pdf for cases/statutes, .xml for patents).
-    :param document_type: One of 'Case', 'Patent', 'Statute'.
-    :param document_id: Stable ID for the document (e.g., citation string or patent number).
+    :param path: File to parse (.pdf for papers, .txt/.md for plain text).
+    :param document_type: One of 'Paper', 'Survey', 'Benchmark'.
+    :param document_id: Stable ID for the document (e.g. an arXiv id).
     :param extra_metadata: Extra metadata merged into every chunk's metadata dict.
     :param parent_size: Token size for parent chunks.
     :param child_size: Token size for child chunks.
     :param overlap: Token overlap between consecutive chunks.
     :returns: Flat list of Chunk objects (parents then children).
     :raises RuntimeError: If the file cannot be parsed.
-    :raises ValueError: If the path does not exist.
+    :raises ValueError: If the path does not exist or the format is unsupported.
     """
     path = Path(path)
     if not path.exists():
@@ -92,11 +57,10 @@ def parse_document(
 
     if suffix == ".pdf":
         text = _extract_pdf_text(path)
-    elif suffix == ".xml":
-        text, xml_meta = _extract_patent_xml_text(path)
-        base_metadata.update(xml_meta)
+    elif suffix in (".txt", ".md"):
+        text = path.read_text(encoding="utf-8", errors="ignore")
     else:
-        raise ValueError(f"Unsupported file format: {suffix}. Expected .pdf or .xml")
+        raise ValueError(f"Unsupported file format: {suffix}. Expected .pdf, .txt, or .md")
 
     return build_chunks(
         text=text,

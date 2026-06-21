@@ -1,68 +1,62 @@
 """
-Tests for config startup validation (§0.5).
+Tests for config startup validation.
 All tests are deterministic — no API calls or external services.
 """
 import pytest
 from pydantic import ValidationError
 
 
+def _clear_keys(monkeypatch):
+    for key in (
+        "GROQ_API_KEY", "OPENAI_API_KEY", "GOOGLE_API_KEY",
+        "COHERE_API_KEY", "TAVILY_API_KEY", "LLM_PROVIDER",
+        "EMBEDDING_PROVIDER", "EMBEDDING_DIMENSIONS",
+        "CHILD_CHUNK_SIZE", "PARENT_CHUNK_SIZE",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+
 @pytest.mark.unit
 class TestConfigValidation:
-    def test_missing_required_key_raises(self, monkeypatch):
-        """Missing any required secret must raise ValidationError with a clear message."""
-        # Wipe all env vars that the Settings class requires
-        required = [
-            "OPENAI_API_KEY", "GOOGLE_API_KEY", "COHERE_API_KEY",
-            "TAVILY_API_KEY", "NEO4J_PASSWORD",
-        ]
-        for key in required:
-            monkeypatch.delenv(key, raising=False)
-
-        from app.config import Settings
-
-        with pytest.raises(ValidationError) as exc_info:
-            Settings(_env_file=None)
-
-        errors = exc_info.value.errors()
-        missing_fields = {e["loc"][0] for e in errors}
-        assert "openai_api_key" in missing_fields
-
-    def test_all_keys_present_succeeds(self, monkeypatch):
-        """Providing all required keys must not raise."""
-        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
-        monkeypatch.setenv("GOOGLE_API_KEY", "ggl-test")
-        monkeypatch.setenv("COHERE_API_KEY", "co-test")
-        monkeypatch.setenv("TAVILY_API_KEY", "tvly-test")
-        monkeypatch.setenv("NEO4J_PASSWORD", "secret")
-
+    def test_boots_without_any_api_keys(self, monkeypatch):
+        """Free-tier default: the app must construct settings with no keys set."""
+        _clear_keys(monkeypatch)
         from app.config import Settings
 
         cfg = Settings(_env_file=None)
-        assert cfg.openai_api_key == "sk-test"
+        assert cfg.llm_provider == "groq"
+        assert cfg.embedding_provider == "fastembed"
 
     def test_default_embedding_dimensions(self, monkeypatch):
-        """Embedding dimensions default to 3072 (native text-embedding-3-large)."""
-        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
-        monkeypatch.setenv("GOOGLE_API_KEY", "ggl-test")
-        monkeypatch.setenv("COHERE_API_KEY", "co-test")
-        monkeypatch.setenv("TAVILY_API_KEY", "tvly-test")
-        monkeypatch.setenv("NEO4J_PASSWORD", "secret")
-
+        """FastEmbed default model is 384-dimensional."""
+        _clear_keys(monkeypatch)
         from app.config import Settings
 
         cfg = Settings(_env_file=None)
-        assert cfg.embedding_dimensions == 3072
+        assert cfg.embedding_dimensions == 384
+
+    def test_active_llm_key_raises_when_missing(self, monkeypatch):
+        """Requesting the active provider key without it set must raise a clear error."""
+        _clear_keys(monkeypatch)
+        from app.config import Settings
+
+        cfg = Settings(_env_file=None)
+        with pytest.raises(ValueError, match="GROQ_API_KEY"):
+            cfg.active_llm_key()
+
+    def test_active_llm_key_returns_when_present(self, monkeypatch):
+        _clear_keys(monkeypatch)
+        monkeypatch.setenv("GROQ_API_KEY", "gsk-test")
+        from app.config import Settings
+
+        cfg = Settings(_env_file=None)
+        assert cfg.active_llm_key() == "gsk-test"
 
     def test_invalid_chunk_sizes_rejected(self, monkeypatch):
         """child_chunk_size >= parent_chunk_size must raise ValidationError."""
-        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
-        monkeypatch.setenv("GOOGLE_API_KEY", "ggl-test")
-        monkeypatch.setenv("COHERE_API_KEY", "co-test")
-        monkeypatch.setenv("TAVILY_API_KEY", "tvly-test")
-        monkeypatch.setenv("NEO4J_PASSWORD", "secret")
+        _clear_keys(monkeypatch)
         monkeypatch.setenv("CHILD_CHUNK_SIZE", "2000")
         monkeypatch.setenv("PARENT_CHUNK_SIZE", "1200")
-
         from app.config import Settings
 
         with pytest.raises(ValidationError) as exc_info:

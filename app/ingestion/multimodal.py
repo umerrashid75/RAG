@@ -10,5 +10,5 @@ from app.models import Chunk
 
 
 def caption_diagram(image_path: Path, document_id: str) -> Chunk:
-    """P5 stub. Will use Gemini Vision to caption diagrams in legal exhibits."""
+    """Deferred stub. Will use a vision LLM to caption figures/diagrams in papers."""
     raise NotImplementedError("Multimodal captioning is deferred to Phase P5.")
